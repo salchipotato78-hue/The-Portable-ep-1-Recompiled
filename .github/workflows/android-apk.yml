@@ -1,0 +1,55 @@
+# Build the arm64 Android APK on GitHub-hosted Windows runners.
+# Mirrors build-android-arm64.bat + android/package-arm64.ps1.
+# The packaging scripts resolve the repo root from their own location,
+# so the checkout can live anywhere (the default workspace is fine).
+name: android-apk
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-arm64:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK and NDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install SDK packages
+        shell: pwsh
+        run: |
+          $sdk = Join-Path $env:LOCALAPPDATA "Android\Sdk"
+          $sdkmanager = Get-ChildItem (Join-Path $env:ANDROID_HOME "cmdline-tools") -Recurse -Filter sdkmanager.bat | Select-Object -First 1
+          & $sdkmanager.FullName --install "platforms;android-35" "build-tools;35.0.0" "ndk;28.2.13676358" "cmake;3.31.6" | Out-Host
+          # The build expects the SDK under %LOCALAPPDATA%\Android\Sdk
+          if (-not (Test-Path $sdk)) { New-Item -ItemType Directory -Force -Path (Split-Path $sdk) | Out-Null; cmd /c mklink /J "$sdk" "$env:ANDROID_HOME" | Out-Host }
+
+      - name: Install Ninja
+        shell: pwsh
+        run: choco install ninja -y --no-progress
+
+      - name: Build native libraries
+        shell: cmd
+        run: build-android-arm64.bat
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sonic4-arm64-v8a
+          path: android/dist/Sonic4-arm64-v8a.apk
+          if-no-files-found: error
+          
