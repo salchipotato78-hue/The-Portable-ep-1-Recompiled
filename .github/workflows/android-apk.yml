@@ -26,23 +26,30 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK and NDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install SDK packages
+      # The windows-latest image already ships an Android SDK at ANDROID_HOME.
+      # We drive sdkmanager ourselves instead of android-actions/setup-android,
+      # which fails on the legacy 'tools' package.
+      - name: Install Android SDK packages
         shell: pwsh
         run: |
-          $sdk = Join-Path $env:LOCALAPPDATA "Android\Sdk"
-          $sdkmanager = Get-ChildItem (Join-Path $env:ANDROID_HOME "cmdline-tools") -Recurse -Filter sdkmanager.bat | Select-Object -First 1
-          & $sdkmanager.FullName --install "platforms;android-35" "build-tools;35.0.0" "ndk;28.2.13676358" "cmake;3.31.6" | Out-Host
-          # The build expects the SDK under %LOCALAPPDATA%\Android\Sdk
-          if (-not (Test-Path $sdk)) { New-Item -ItemType Directory -Force -Path (Split-Path $sdk) | Out-Null; cmd /c mklink /J "$sdk" "$env:ANDROID_HOME" | Out-Host }
+          $sdkRoot = $env:ANDROID_HOME
+          $sdkmanager = Get-ChildItem (Join-Path $sdkRoot "cmdline-tools") -Recurse -Filter sdkmanager.bat | Select-Object -First 1
+          if (-not $sdkmanager) { throw "sdkmanager.bat not found under $sdkRoot" }
+          1..50 | ForEach-Object { 'y' } | & $sdkmanager.FullName --licenses | Out-Host
+          & $sdkmanager.FullName --install "platforms;android-35" "build-tools;35.0.0" "ndk;28.2.13676358" | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw "sdkmanager install failed" }
+          # build-android-arm64.bat and package-arm64.ps1 expect the SDK under %LOCALAPPDATA%\Android\Sdk
+          $expected = Join-Path $env:LOCALAPPDATA "Android\Sdk"
+          if (-not (Test-Path $expected)) {
+            New-Item -ItemType Directory -Force -Path (Split-Path $expected) | Out-Null
+            cmd /c mklink /J "$expected" "$sdkRoot" | Out-Host
+          }
 
       - name: Install Ninja
         shell: pwsh
         run: choco install ninja -y --no-progress
 
-      - name: Build native libraries
+      - name: Build native libraries and APK
         shell: cmd
         run: build-android-arm64.bat
 
@@ -52,4 +59,3 @@ jobs:
           name: Sonic4-arm64-v8a
           path: android/dist/Sonic4-arm64-v8a.apk
           if-no-files-found: error
-          
