@@ -1,6 +1,7 @@
 $ErrorActionPreference = "Stop"
 
-$Root = "C:\S4EP1Recomp"
+# Repo root = parent of the android\ folder this script lives in (works for any clone location).
+$Root = Split-Path -Parent $PSScriptRoot
 $Sdk = Join-Path $env:LOCALAPPDATA "Android\Sdk"
 $BuildTools = Get-ChildItem (Join-Path $Sdk "build-tools") -Directory | Sort-Object Name -Descending | Select-Object -First 1
 $Platform = Get-ChildItem (Join-Path $Sdk "platforms") -Directory | Sort-Object Name -Descending | Select-Object -First 1
